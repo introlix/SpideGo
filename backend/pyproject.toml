@@ -1,0 +1,35 @@
+[project]
+name = "SpideGo"
+description = "Local Search Engine that Works"
+authors = [{ name = "Satyam Mishra", email = "satyam@introlix.ai" }]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+license = { text = "Apache-2.0" }
+keywords = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Framework :: FastAPI",
+]
+
+dependencies = [
+    "requests>=2.34.2",
+]
+[tool.setuptools.packages.find]
+include = ["introlix*"]
+exclude = ["web*"]
+
+[project.urls]
+Homepage = "https://github.com/introlix/introlix-app"
+Repository = "https://github.com/introlix/introlix-app"
+Documentation = "https://github.com/introlix/introlix-app/tree/main/docs"
+"Bug Tracker" = "https://github.com/introlix/introlix-app/issues"
