@@ -23,6 +23,9 @@ classifiers = [
 
 dependencies = [
     "requests>=2.34.2",
+    "llama-cpp-python>=0.3.35",
+    "fastapi>=0.141.1",
+    "uvicorn>=0.52.4"
 ]
 [tool.setuptools.packages.find]
 include = ["introlix*"]
