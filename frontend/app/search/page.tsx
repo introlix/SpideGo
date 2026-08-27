@@ -1,4 +1,5 @@
 import { SearchInput } from "@/components/search-input";
+import { SearchResults } from "@/components/search-results";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 
@@ -13,12 +14,12 @@ export default async function SearchPage({
   const params = await searchParams;
 
   const tabs = [
-    { name: "All", value: "all", link: `search?q=${params.q}&tab=all` },
-    { name: "Image", value: "image", link: `search?q=${params.q}&tab=image` },
-    { name: "Video", value: "video", link: `search?q=${params.q}&tab=video` },
+    { name: "All", value: "general", link: `search?q=${params.q}&tab=general` },
+    { name: "Images", value: "images", link: `search?q=${params.q}&tab=images` },
+    { name: "Video", value: "videos", link: `search?q=${params.q}&tab=videos` },
     { name: "News", value: "news", link: `search?q=${params.q}&tab=news` },
     { name: "Map", value: "map", link: `search?q=${params.q}&tab=map` },
-    { name: "Forums", value: "forums", link: `search?q=${params.q}&tab=forums` },
+    { name: "Forums", value: "it", link: `search?q=${params.q}&tab=it` },
     { name: "Music", value: "music", link: `search?q=${params.q}&tab=music` },
   ]
 
@@ -34,7 +35,7 @@ export default async function SearchPage({
           </div>
         </div>
 
-        <Tabs value={params.tab || "all"} className={"sm:ml-44 mx-10 mt-3"}>
+        <Tabs value={params.tab || "all"} className={"sm:ml-44 sm:items-start items-center mt-3"}>
           <TabsList variant="line">
             {tabs.map((data, index) => (
               <Link key={index} href={data.link}><TabsTrigger value={data.value}>{data.name}</TabsTrigger></Link>
@@ -43,8 +44,8 @@ export default async function SearchPage({
         </Tabs>
       </div>
 
-      <main className="mx-auto max-w-7xl px-6 pt-8">
-        {/* Search results will go here */}
+      <main className="px-6 pt-40">
+        {params.q && <SearchResults query={params.q} tab={params.tab ?? "general"} />}
       </main>
     </div>
   );

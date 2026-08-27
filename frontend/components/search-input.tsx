@@ -39,7 +39,7 @@ export const SearchInput = ({ q }: { q?: string }) => {
             return;
         }
 
-        router.push(`/search?${params.toString()}&tab=all`);
+        router.push(`/search?${params.toString()}&tab=general`);
     };
 
 
@@ -138,7 +138,7 @@ export const SearchInput = ({ q }: { q?: string }) => {
                                 const params = new URLSearchParams();
                                 params.set("q", suggestion);
 
-                                router.push(`/search?${params.toString()}&tab=all`);
+                                router.push(`/search?${params.toString()}&tab=general`);
                             }}
                             className={cn(
                                 "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",

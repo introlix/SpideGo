@@ -2,9 +2,13 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --link: #3b9cff;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -81,9 +85,11 @@
   --sidebar-ring: oklch(0.708 0 0);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+  --link: #3b9cff;
 }
 
 .dark {
+  --link: #3b9cff;
   --background: #181817;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
@@ -127,4 +133,19 @@
   html {
     @apply font-sans;
   }
+}
+
+.snippets-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+.snippets-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.snippets-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.snippets-scroll::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 999px;
 }

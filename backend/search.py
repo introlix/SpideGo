@@ -1,30 +1,27 @@
-import random
-import requests
+import httpx
+from backend.config import SEARXNG_URL
 
-SEARXNG_URL = "http://localhost:8888/search"  # your local instance
+headers = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/151.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
-RELIABLE = ["duckduckgo"]
-ROTATING_POOL = ["brave", "startpage", "google", "qwant"]
-
-def pick_engines():
-    return RELIABLE + [random.choice(ROTATING_POOL)]
-
-def search(query: str):
-    engines = pick_engines()
+async def search(query: str, tab: str):
     params = {
         "q": query,
         "format": "json",
-        "engines": ",".join(engines),
         "language": "auto",
         "time_range": "",
         "safesearch": 0,
-        "theme": "simple"
+        "categories": tab
     }
-    response = requests.get(SEARXNG_URL, params=params, timeout=10)
-    response.raise_for_status()
-    return response.json()
+    async with httpx.AsyncClient() as client:
+        response = await client.get(SEARXNG_URL, params=params, headers=headers, timeout=5.0)
+        response.raise_for_status()
 
-# usage
-results = search("robot perception SLAM")
-for r in results["results"]:
-    print(r["title"], "-", r["url"])
+    return response.json()
