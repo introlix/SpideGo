@@ -62,7 +62,7 @@ function ResultItem({ result }: { result: SearchResult }) {
 
 function ImageGrid({ results }: { results: SearchResult[] }) {
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7 sm:mt-0 mt-10">
       {results.map((result, index) => (
         <Link
           key={`${result.url}_${index}`}
@@ -86,7 +86,7 @@ function ImageGrid({ results }: { results: SearchResult[] }) {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-8 sm:ml-40 mx-10 max-w-2xl">
+    <div className="space-y-8 sm:ml-40 sm:max-w-2xl w-full sm:mt-0 mt-10">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="flex gap-4">
           <Skeleton className="h-24 w-24 bg-white/10" />
@@ -175,7 +175,7 @@ export function SearchResults({ query, tab }: { query: string; tab: string }) {
   }
 
   return (
-    <div className="space-y-8 sm:ml-40 mx-10 max-w-2xl">
+    <div className="space-y-8 sm:ml-40 sm:max-w-2xl w-full">
       <FeatureSnippets query={query} urls={urls} />
       <div>
         {results.map((result, index) => (

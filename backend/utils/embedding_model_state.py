@@ -5,7 +5,7 @@ class EmbeddingModelState:
         self.embedding = None
 
     def load_embedding(self):
-        self.embedding = SentenceTransformer("all-MiniLM-L6-v2")
+        self.embedding = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
     def get_model(self):
         if self.embedding:

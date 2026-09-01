@@ -10,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # adding embedding model and pinecone client to app state
-    embeddingmodelstate.embedding = SentenceTransformer("all-MiniLM-L6-v2")
+    embeddingmodelstate.embedding = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
     try:
         yield
