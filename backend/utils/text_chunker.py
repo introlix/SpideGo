@@ -1,135 +1,190 @@
 import tiktoken
 import re
-from typing import List, Dict, Tuple
+from inspect import cleandoc
+from typing import List, Dict
+from marko.ext.gfm import GFM
+from marko import Markdown
+
+MARKDOWN_PATTERNS = [
+    re.compile(r"^#{1,6}\s"),  # heading
+    re.compile(r"^\s*[-*+]\s+"),  # bullet list
+    re.compile(r"^\s*\d+\.\s+"),  # numbered list
+    re.compile(r"^\s*>"),  # blockquote
+    re.compile(r"^\s*\|.*\|\s*$"),  # table row
+]
+
+CODE_PATTERNS = [
+    re.compile(
+        r"^\s*(import|from|def|class|function|const|let|var|return|export|async|await)\b"
+    ),
+    re.compile(r"^\s*(if|elif|else|for|while|switch)\b.*[:{]"),
+    re.compile(r"^\s*(pip|python|node|npm|yarn|git|docker)\b"),
+    re.compile(r"[{};]\s*$"),
+    re.compile(r"\w+\([^)]*\)"),
+    re.compile(r"^\s*//"),
+    re.compile(r"^\s*/\*"),
+]
+
+
+def is_it_code(text: str) -> bool:
+    text = text.strip()
+
+    if not text:
+        return False
+
+    # If it still has fences, it is code.
+    if text.startswith("```") or text.startswith("~~~"):
+        return True
+
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+
+    if not lines:
+        return False
+
+    markdown_lines = 0
+    code_lines = 0
+
+    for line in lines:
+        if any(pattern.search(line) for pattern in MARKDOWN_PATTERNS):
+            markdown_lines += 1
+
+        if any(pattern.search(line) for pattern in CODE_PATTERNS):
+            code_lines += 1
+
+    # It is not a code if it has more than 2 markdown lines
+    if markdown_lines >= 2 and markdown_lines >= code_lines:
+        return False
+
+    if code_lines > 0:
+        return True
+
+    # Natural language usually has many words and few symbols.
+    words = len(re.findall(r"\b[\w'-]+\b", text))
+    symbols = len(re.findall(r"[{}()\[\];=<>]", text))
+
+    symbol_ratio = symbols / max(words, 1)
+
+    # If there more more symbols than words then its a code.
+    if symbol_ratio >= 0.10:
+        return True
+
+    # If there are more words than symbols then its a natural language.
+    if words > 25 and symbol_ratio < 0.04:
+        return False
+
+    return True
 
 
 class TextChunker:
-    def __init__(
-        self, model_name: str = "cl100k_base", chunk_size: int = 1000, overlap: int = 2
-    ):
-        """
-        Initialize the chunker with token counting capability
-
-        Args:
-            model_name: Encoding model for token counting (cl100k_base for GPT-4, p50k_base for GPT-3)
-            chunk_size: Maximum tokens per chunk
-            overlap: Number of tokens to overlap between chunks
-        """
+    def __init__(self, model_name: str = "cl100k_base", chunk_size: int = 1000):
         self.model_name = model_name
         self.chunk_size = chunk_size
-        self.overlap = overlap
         self.encoding = tiktoken.get_encoding(model_name)
 
+        self.parser = Markdown(extensions=[GFM])
+
     def count_tokens(self, text: str) -> int:
-        """Count tokens in text"""
+        """Count the number of tokens in the given text using the specified encoding. For code and table blocks, count them as 1 token each."""
         if not text or not text.strip():
             return 0
-        return len(self.encoding.encode(text))
+        token_size = 0
+        text = cleandoc(text).strip()
+        blocks = self.split_blocks(text)
+        for block in blocks:
+            if block["type"] in ["code", "table"]:
+                token_size += 1
+            else:
+                token_size += len(self.encoding.encode(block["text"]))
+        return token_size
+
+    def split_blocks(self, text: str) -> List[Dict]:
+        text = cleandoc(text).strip()
+        doc = self.parser.parse(text)
+
+        blocks = []
+        type_mapping = {
+            "Paragraph": "p",
+            "Heading": "heading",
+            "Table": "table",
+            "List": "list",
+            "CodeBlock": "code",
+            "FencedCode": "code",
+            "Quote": "blockquote",
+        }
+
+        for child in doc.children:
+            classname = child.__class__.__name__
+
+            block_type = type_mapping.get(classname, classname.lower())
+            block_text = self.parser.render(child)
+
+            if classname == "CodeBlock":
+                if is_it_code(block_text):
+                    block_type = "code"
+                else:
+                    block_type = "p"
+
+                    words_to_remove = ["<pre>", "</pre>", "<code>", "</code>"]
+                    pattern = "|".join(map(re.escape, words_to_remove))
+
+                    block_text = re.sub(pattern, "", block_text).strip()
+
+                    block_text = f"<p>{block_text}</p>"
+
+            if block_text.strip():
+                blocks.append({"type": block_type, "text": block_text.strip()})
+
+        return blocks
 
     def split_by_sentences(self, text: str) -> List[str]:
-        """Split text into individual sentence/content units."""
-
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-
-        # Markdown headings / bold sections are boundaries
-        text = re.sub(r"\s+(?=#{1,6}\s+)", "\n", text)
-        text = re.sub(r"\s+(?=\*\*[^*]+\*\*)", "\n", text)
-
-        # Normalize spaces but preserve newlines
-        text = re.sub(r"[ \t]+", " ", text)
-        text = re.sub(r"\n{2,}", "\n", text).strip()
-
-        result = []
-
-        for line in text.split("\n"):
-            line = line.strip()
-            
-            if not line:
-                continue
-
-            # Split normal sentences inside this line
-            parts = re.split(
-                r'(?<=[.!?])(?:["\')\]]+)?\s+(?=[A-Z0-9])',
-                line
-            )
-
-            for i, part in enumerate(parts):
-                part = part.strip()
-
-                if not part:
-                    continue
-
-                if i == 0:
-                    part = "\n" + part
-
-                result.append(part)
-
-        return result
-
-    def split_by_paragraphs(self, text: str) -> List[str]:
-        """Split text into paragraphs"""
-        paragraphs = re.split(r"\n\s*\n", text)
-        paragraphs = [p.strip() for p in paragraphs if p.strip()]
-        return paragraphs
-
-    def chunk_text(self, text: str) -> List[Dict]:
-        """
-        Chunk text into manageable pieces with overlap
-
-        If a paragraph exceeds chunk size, it is further split by sentences. It doesn't split sentences.
-        So, if a single sentence exceeds chunk size, it will not be split and will exceed the chunk size.
-        """
         if not text or not text.strip():
             return []
 
-        # If text is already within chunk size, return as a single chunk
-        if self.count_tokens(text) <= self.chunk_size:
-            return [
-                self._create_chunk_dict(
-                    text.strip(), 0, self.count_tokens(text.strip())
-                )
-            ]
+        blocks = self.split_blocks(text)
 
-        paragraphs = self.split_by_paragraphs(text)
+        sentences = []
+
+        for block in blocks:
+            block_text = block["text"]
+            block_type = block["type"]
+
+            # Not going to split code or table blocks into sentences as this will cause problems with code snippets and table formatting.
+            if block_type in ["code", "table"]:
+                sentences.append(block_text)
+            else:
+                # Split the block into sentences using regex
+                parts = re.split(
+                    r'(?<=[.!?])(?:["”’\'\)\]]+)?\s+(?=[A-Z0-9"“‘\(\[]|$)', block_text
+                )
+
+                for part in parts:
+                    part = part.strip()
+                    if part:
+                        sentences.append(part)
+
+        return [unit for unit in sentences if unit and unit.strip()]
+
+    def chunk_text(self, text: str) -> List[Dict]:
+        if not text or not text.strip():
+            return []
+
+        blocks = self.split_blocks(text)
         chunks = []
         current_chunk = ""
         current_tokens = 0
         chunk_id = 0
 
-        for paragraph in paragraphs:
-            paragraph_tokens = self.count_tokens(paragraph)
+        for block in blocks:
+            block_text = block["text"]
+            block_type = block["type"]
 
-            # if a single paragraph exceeds chunk size, split it by sentences
-            if paragraph_tokens > self.chunk_size:
-                sentences = self.split_by_sentences(paragraph)
+            if block_type in ["code", "table"]:
+                block_len = 1
+            else:
+                block_len = len(self.encoding.encode(block_text))
 
-                for sentence in sentences:
-                    sentence_tokens = self.count_tokens(sentence)
-
-                    if current_tokens + sentence_tokens <= self.chunk_size:
-                        current_chunk += (" " if current_chunk else "") + sentence
-                        current_tokens += sentence_tokens
-                    else:
-                        if current_chunk.strip():
-                            if chunks:
-                                current_chunk, current_tokens = self._add_overlap(
-                                    chunks[-1]["text"], current_chunk
-                                )
-                            chunks.append(
-                                self._create_chunk_dict(
-                                    current_chunk, chunk_id, current_tokens
-                                )
-                            )
-                            chunk_id += 1
-
-                        current_chunk = sentence
-                        current_tokens = sentence_tokens
-
+            if block_len > self.chunk_size:
                 if current_chunk.strip():
-                    if chunks:
-                        current_chunk, current_tokens = self._add_overlap(
-                            chunks[-1]["text"], current_chunk
-                        )
                     chunks.append(
                         self._create_chunk_dict(current_chunk, chunk_id, current_tokens)
                     )
@@ -137,62 +192,135 @@ class TextChunker:
                     current_chunk = ""
                     current_tokens = 0
 
-            elif paragraph_tokens + current_tokens <= self.chunk_size:
-                current_chunk += ("\n\n" if current_chunk else "") + paragraph
-                current_tokens += paragraph_tokens
-            else:
-                if current_chunk.strip():
-                    if chunks:
-                        current_chunk, current_tokens = self._add_overlap(
-                            chunks[-1]["text"], current_chunk
-                        )
+                # Not going to split code and table block in sentences
+                if block_type in ["code", "table"]:
                     chunks.append(
-                        self._create_chunk_dict(current_chunk, chunk_id, current_tokens)
+                        self._create_chunk_dict(block_text, chunk_id, block_len)
                     )
                     chunk_id += 1
+                else:
+                    # Split normal text by sentences
+                    sentences = self.split_by_sentences(block_text)
+                    for sentence in sentences:
+                        sentence_len = len(self.encoding.encode(sentence))
+                        if current_tokens + sentence_len <= self.chunk_size:
+                            current_chunk += (
+                                (" " + sentence) if current_chunk else sentence
+                            )
+                            current_tokens += sentence_len
+                        else:
+                            if current_chunk.strip():
+                                chunks.append(
+                                    self._create_chunk_dict(
+                                        current_chunk, chunk_id, current_tokens
+                                    )
+                                )
+                                chunk_id += 1
+                            current_chunk = sentence
+                            current_tokens = sentence_len
 
-                current_chunk = paragraph
-                current_tokens = paragraph_tokens
+                    # still there could be some sentences there.
+                    if current_chunk.strip():
+                        chunks.append(
+                            self._create_chunk_dict(
+                                current_chunk, chunk_id, current_tokens
+                            )
+                        )
+                        chunk_id += 1
+                        current_chunk = ""
+                        current_tokens = 0
 
+            else:
+                if current_tokens + block_len <= self.chunk_size:
+                    # Fits perfectly in current chunk
+                    current_chunk += (
+                        ("\n\n" + block_text) if current_chunk else block_text
+                    )
+                    current_tokens += block_len
+                else:
+                    # Doesn't fit in current chunk
+
+                    if block_type in ["code", "table"]:
+                        if current_chunk.strip():
+                            chunks.append(
+                                self._create_chunk_dict(
+                                    current_chunk, chunk_id, current_tokens
+                                )
+                            )
+                            chunk_id += 1
+                        current_chunk = block_text
+                        current_tokens = block_len
+                    else:
+                        # THis is a normal block. So, we going to split it.
+                        sentences = self.split_by_sentences(block_text)
+
+                        for sentence in sentences:
+                            sentence_len = len(self.encoding.encode(sentence))
+                            if current_tokens + sentence_len <= self.chunk_size:
+                                current_chunk += (
+                                    (" " + sentence) if current_chunk else sentence
+                                )
+                                current_tokens += sentence_len
+                            else:
+                                # Flush current chunk
+                                if current_chunk.strip():
+                                    chunks.append(
+                                        self._create_chunk_dict(
+                                            current_chunk, chunk_id, current_tokens
+                                        )
+                                    )
+                                    chunk_id += 1
+                                current_chunk = sentence
+                                current_tokens = sentence_len
+
+        # Still there are some texts left so append it to chunk
         if current_chunk.strip():
-            if chunks:
-                current_chunk, current_tokens = self._add_overlap(
-                    chunks[-1]["text"], current_chunk
-                )
             chunks.append(
                 self._create_chunk_dict(current_chunk, chunk_id, current_tokens)
             )
 
         return chunks
 
-    def _add_overlap(self, previous_chunk: str, current_chunk: str) -> Tuple[str, int]:
-        """Add overlap to the current chunk"""
-        if not previous_chunk or not previous_chunk.strip():
-            return current_chunk, self.count_tokens(current_chunk)
-
-        sentences = self.split_by_sentences(previous_chunk)
-        overlap_sentences = sentences[-self.overlap :] if sentences else []
-
-        if not overlap_sentences:
-            return current_chunk, self.count_tokens(current_chunk)
-
-        overlap_text = " ".join(sentence.strip() for sentence in overlap_sentences)
-        new_chunk = (overlap_text + " " + current_chunk).strip()
-        new_chunk_tokens = self.count_tokens(new_chunk)
-        return new_chunk, new_chunk_tokens
-
     def _create_chunk_dict(self, text: str, chunk_id: int, token_count: int) -> Dict:
-        """Create a structured chunk dictionary"""
-        return {
-            "chunk_id": chunk_id,
-            "text": text,
-            "token_count": token_count,
-        }
+        return {"chunk_id": chunk_id, "text": text, "token_count": token_count}
+
 
 if __name__ == "__main__":
-    test_chunk = """## ENCYCLOPEDIC ENTRY Open Educational Resource. ## ENCYCLOPEDIC ENTRY # Photosynthesis # Photosynthesis Photosynthesis is the process by which plants use sunlight, water, and carbon dioxide to create oxygen and energy in the form of sugar. ### Grades 5 - 8. ### Subjects Biology. ## Learning materials Most life on Earth depends on photosynthesis.The process is carried out by plants, algae, and some types of bacteria, which capture energy from sunlight to produce oxygen (O<sub>2</sub>) and chemical energy stored in glucose (a sugar). Herbivores then obtain this energy by eating plants, and carnivores obtain it by eating herbivores. **The process** During photosynthesis, plants take in carbon dioxide (CO<sub>2</sub>) and water (H<sub>2</sub>O) from the air and soil. Within the plant cell, the water is oxidized, meaning it loses electrons, while the carbon dioxide is reduced, meaning it gains electrons. This transforms the water into oxygen and the carbon dioxide into glucose. The plant then releases the oxygen back into the air, and stores energy within the glucose molecules. **Chlorophyll** Inside the plant cell are small organelles called chloroplasts, which store the energy of sunlight. Within the thylakoid membranes of the chloroplast is a light-absorbing pigment called chlorophyll, which is responsible for giving the plant its green color. During photosynthesis, chlorophyll absorbs energy from blue- and red-light waves, and reflects green-light waves, making the plant appear green. **Light-dependent Reactions vs. Light-independent Reactions** While there are many steps behind the process of photosynthesis, it can be broken down into two major stages: light-dependent reactions and light-independent reactions. The light-dependent reaction takes place within the thylakoid membrane and requires a steady stream of sunlight, hence the name light-*dependent* reaction. The chlorophyll absorbs energy from the light waves, which is converted into chemical energy in the form of the molecules ATP and NADPH.
+    test_chunk = """Type “easiest programming language” into Google and you’ll get a dozen listicles that crown the same winner and move on. They’re not wrong about the winner. They’re wrong about the question.
+    
+    Easy doesn’t matter if it leads nowhere. The simplest language in the world is useless if nobody’s hiring for it. The smart first pick sits at the intersection of two things: gentle enough that you don’t quit in week three, and in demand enough that learning it actually opens a door.
+    
+    So this guide ranks beginner languages on both. How easy each one is to pick up, and how many jobs wait on the other side. We pulled demand data from job boards and the most recent developer surveys, and we’ll tell you the one most people should start with, plus the ones to skip for now.
+    
+    ## Table of contents
+
+    | Header 1 | Header 2 |
+    | --- | --- |
+    | Cell 1 | Cell 2 |
+
+    * List item 1
+    * List item 2
+    
+    ## What makes a programming language easy to learn
+    
+    “Easy” isn’t one thing. A few factors decide whether a language welcomes beginners or fights them.
+    
+    Readable syntax is the big one. Python reads almost like English. C++ reads like punctuation had an argument. The closer the code looks to plain instructions, the faster a beginner can follow what’s happening.
+    
+    Then there’s how much you have to know before you can run anything. Some languages let you write one line and see a result. Others make you set up a compiler, declare types, and wrap everything in boilerplate before “hello world” works. Fast feedback keeps beginners motivated. Setup friction makes them quit.
+    
+    The last factor is the ecosystem around the language: tutorials, free courses, Stack Overflow answers, and a community that’s seen your exact error before. A language with a huge beginner community is easier to learn even if the syntax is identical, simply because help is everywhere.
+    
+    ## The easiest programming languages, ranked
+    
+    Here’s how the most common starter languages stack up on a straight beginner-friendliness score. This is purely about ease of learning, not about jobs (that’s the next chart).
+    
+    A quick honesty check on this chart. HTML and CSS aren’t really programming languages (they describe and style pages, they don’t compute), but almost everyone starts there, so they belong in the conversation. SQL is shockingly beginner-friendly for how powerful it is, because you’re basically writing structured questions about data. And Python sits at the top for a reason we’ll get into.
+    
+    ## Easy vs. employable: the chart that matters
 """
-    chunker = TextChunker(chunk_size=20, overlap=0)
-    result = chunker.split_by_sentences(test_chunk)
+    chunker = TextChunker(chunk_size=50)
+    result = chunker.chunk_text(test_chunk)
 
     print(result)
+    print(f"Number of blocks: {len(result)}")

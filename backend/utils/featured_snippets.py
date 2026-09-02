@@ -1,7 +1,7 @@
 import hashlib
 from backend.utils.web_crawler import web_crawler, ScrapeResult
 from backend.utils.text_chunker import TextChunker
-from backend.config import CHUNK_SIZE, CHUNK_OVERLAP_SIZE, TOTAL_CHUNK_CAP
+from backend.config import CHUNK_SIZE, TOTAL_CHUNK_CAP
 from backend.utils.embedding_model_state import embeddingmodelstate
 from backend.utils.caching import (
     get_cached_page,
@@ -47,7 +47,7 @@ async def crawl_and_chunk(query: str, url: str) -> list:
         if not isinstance(page_text, str) or not page_text.strip():
             return []
 
-        chunker = TextChunker(chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP_SIZE)
+        chunker = TextChunker(chunk_size=CHUNK_SIZE)
         chunks = chunker.chunk_text(page_text)
 
         chunk_texts = [chunk["text"] for chunk in chunks]
@@ -81,62 +81,92 @@ async def crawl_and_chunk(query: str, url: str) -> list:
                 "chunk_id": chunk["chunk_id"],
                 "chunk_text": chunk["text"],
                 "score": similarity_score,
+                "token_count": chunk.get(
+                    "token_count", chunker.count_tokens(chunk["text"])
+                ),
             }
             relevant_chunks.append(chunk_record)
 
         final_chunks = []
-        current = None
+        seen_sentences = set()
+        used_tokens = 0
 
-        for r_chunk in relevant_chunks:
-            if current is None:
-                current = r_chunk.copy()
-                continue
+        relevant_chunks.sort(key=lambda x: x["score"], reverse=True)
 
-            if len(current['chunk_text'] + r_chunk['chunk_text']) <= TOTAL_CHUNK_CAP:
-                current['chunk_text'] += "\n\n" + r_chunk['chunk_text']
-                current['score'] = max(current['score'], r_chunk['score'])
-            else:
-                final_chunks.append(current)
-                current = r_chunk.copy()
+        seen = set()
+        unique_relevant_chunks = []
+        for chunk in relevant_chunks:
+            if chunk["chunk_text"] not in seen:
+                unique_relevant_chunks.append(chunk)
+                seen.add(chunk["chunk_text"])
 
-        if current:
-            final_chunks.append(current)
-            
+        relevant_chunks = unique_relevant_chunks
 
-        final_chunks.sort(key=lambda x: x["score"], reverse=True)
+        for relevant_chunk in relevant_chunks:
+            chunk_tokens = relevant_chunk.get(
+                "token_count", chunker.count_tokens(relevant_chunk["chunk_text"])
+            )
+            separator_tokens = chunker.count_tokens("\n\n") if final_chunks else 0
+
+            if used_tokens + separator_tokens + chunk_tokens <= TOTAL_CHUNK_CAP:
+                # See if the first sentence of the current chunk is good or not. If its good then append it if not then remove that sentence and check again till get best and then append it.
+                relevant_sentences = chunker.split_by_sentences(
+                    relevant_chunk["chunk_text"]
+                )
+
+                kept_sentences = []
+                found_good_start = False
+
+                for sentence in relevant_sentences:
+                    sentence_key = " ".join(sentence.split())
+
+                    if sentence_key in seen_sentences:
+                        continue
+
+                    if not found_good_start:
+                        sentence_embedding = embedding_model.encode(
+                            [sentence], batch_size=32
+                        )
+
+                        sentence_similarity = embedding_model.similarity(
+                            query_embedding, sentence_embedding
+                        )[0][0]
+
+                        if sentence_similarity >= 0.45:
+                            found_good_start = True
+                        else:
+                            continue
+
+                    kept_sentences.append(sentence)
+                    seen_sentences.add(sentence_key)
+
+                relevant_chunk["chunk_text"] = "\n\n".join(kept_sentences)
+
+                chunk_tokens = chunker.count_tokens(relevant_chunk["chunk_text"])
+
+                final_chunks.append(relevant_chunk)
+                used_tokens += separator_tokens + chunk_tokens
+
+        if not final_chunks and relevant_chunks:
+            final_chunks.append(relevant_chunks[0])
+
+        final_chunks.sort(key=lambda x: x["chunk_id"])
+
+        final_text = "\n\n".join(chunk["chunk_text"] for chunk in final_chunks)
+
+        final_chunk = [
+            {
+                **final_chunks[0],
+                "chunk_text": final_text,
+                "score": max(chunk["score"] for chunk in final_chunks),
+            }
+        ]
 
         # Pick the highest-scoring final chunk (as a dict) and split it into sentences
-        if not final_chunks:
+        if not final_chunk:
             return []
 
-        top_chunk = final_chunks[:1]
-        final_chunk_result = []
-
-        try:
-            top_chunk_text = top_chunk[0].get("chunk_text", "")
-
-            final_chunk_sentences = chunker.split_by_sentences(top_chunk_text)
-
-            if not final_chunk_sentences:
-                return []
-
-            final_chunk_sentences_emb = embedding_model.encode(final_chunk_sentences, batch_size=32)
-            final_similarities = embedding_model.similarity(query_embedding, final_chunk_sentences_emb)[0]
-
-            for idx, sentence in enumerate(final_chunk_sentences):
-                final_similarity_score = float(final_similarities[idx])
-                if final_similarity_score < similarity_threshold:
-                    print(f"skiping this with score: {final_similarity_score} and sentence: {sentence}")
-                    continue
-
-                final_chunk_result.append(sentence)
-        except Exception as e:
-            print(f"Error While filtering wanted chunk : {e}")
-
-        if top_chunk:
-            top_chunk[0]['chunk_text'] = " ".join(final_chunk_result)
-
-        return top_chunk
+        return final_chunk
     except Exception as e:
         print(f"Error processing {url}: {e}")
         return []

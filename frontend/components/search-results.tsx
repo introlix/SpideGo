@@ -123,29 +123,10 @@ function FeatureSnippets({ query, urls }: { query: string; urls: string[] }) {
             <div className="text-[#3b9cff] hover:underline truncate">
               <Link href={data.url} target="_blank" className="text-lg truncate">{data.title}</Link>
             </div>
-            <article className="mt-3 space-y-2">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  table: ({ children }) => (
-                    <div className="overflow-x-auto rounded-lg border border-neutral-800">
-                      <table className="w-full">{children}</table>
-                    </div>
-                  ),
-                  th: ({ children }) => <th className="px-3 py-2 text-left font-semibold text-neutral-200">{children}</th>,
-                  td: ({ children }) => <td className="border-t border-neutral-800 px-3 py-2 align-top text-neutral-400">{children}</td>,
-                  p: ({ children }) => <p className="text-base">{children}</p>,
-                  h1: ({ children }) => <h1 className="text-xl font-bold">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-xl font-semibold">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-lg font-semibold">{children}</h3>,
-                  h4: ({ children }) => <h4 className="text-base font-semibold">{children}</h4>,
-                  ul: ({ children }) => <ul className="list-disc mx-4 space-y-3">{children}</ul>,
-                  
-                }}
-              >
-                {data.chunk_text}
-              </ReactMarkdown>
-            </article>
+            <article
+              className="prose prose-neutral max-w-none dark:prose-invert prose-headings:scroll-mt-20 prose-h2:mt-8 prose-h2:mb-3 prose-h3:mt-6 prose-h3:mb-2 prose-p:my-3 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-table:my-5 prose-a:no-underline hover:prose-a:underline overflow-x-auto"
+              dangerouslySetInnerHTML={{ __html: data.chunk_text }}
+            />
             <Link href={data.url} target="_blank" className="text-[#3b9cff] text-end">Read More...</Link>
           </CardContent>
         </Card>
