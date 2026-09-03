@@ -1,6 +1,6 @@
 import hashlib
-from backend.utils.web_crawler import web_crawler, ScrapeResult
-from backend.utils.text_chunker import TextChunker
+from backend.services.web_crawler import web_crawler, ScrapeResult
+from backend.services.text_chunker import TextChunker
 from backend.config import CHUNK_SIZE, TOTAL_CHUNK_CAP
 from backend.utils.embedding_model_state import embeddingmodelstate
 from backend.utils.caching import (

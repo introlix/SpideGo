@@ -137,7 +137,9 @@ class TextChunker:
         return blocks
 
     def split_by_sentences(self, text: str) -> List[str]:
+
         if not text or not text.strip():
+
             return []
 
         blocks = self.split_blocks(text)
@@ -145,22 +147,44 @@ class TextChunker:
         sentences = []
 
         for block in blocks:
+
             block_text = block["text"]
+
             block_type = block["type"]
 
             # Not going to split code or table blocks into sentences as this will cause problems with code snippets and table formatting.
             if block_type in ["code", "table"]:
+
                 sentences.append(block_text)
+
             else:
+
                 # Split the block into sentences using regex
+
+                # Keep the outer HTML tag intact while splitting its content.
+                match = re.match(
+                    r"^<([a-zA-Z0-9]+)(?:\s[^>]*)?>(.*?)</\1>$", block_text, re.DOTALL
+                )
+
+                if match:
+                    tag = match.group(1)
+                    content = match.group(2)
+                else:
+                    tag = None
+                    content = block_text
+
                 parts = re.split(
-                    r'(?<=[.!?])(?:["”’\'\)\]]+)?\s+(?=[A-Z0-9"“‘\(\[]|$)', block_text
+                    r'(?<=[.!?])(?:["”’\'\)\]]+)?\s+(?=[A-Z0-9"“‘\(\[]|$)', content
                 )
 
                 for part in parts:
+
                     part = part.strip()
+
                     if part:
-                        sentences.append(part)
+
+                        # Now adding the outer HTML tag back to each sentence.
+                        sentences.append(f"<{tag}>{part}</{tag}>" if tag else part)
 
         return [unit for unit in sentences if unit and unit.strip()]
 

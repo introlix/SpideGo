@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status
-from backend.search import search as search_fn
+from backend.services.search import search as search_fn
 
 router = APIRouter(prefix="/search", tags=["search"])
 

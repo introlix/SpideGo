@@ -34,12 +34,15 @@ dependencies = [
     "sentence-transformers>=6.0.0",
     "marko>=2.2.4"
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+]
+
 [tool.setuptools.packages.find]
 include = ["introlix*"]
 exclude = ["web*"]
 
 [project.urls]
-Homepage = "https://github.com/introlix/introlix-app"
-Repository = "https://github.com/introlix/introlix-app"
-Documentation = "https://github.com/introlix/introlix-app/tree/main/docs"
-"Bug Tracker" = "https://github.com/introlix/introlix-app/issues"
+Homepage = "https://github.com/introlix/SpideGo"

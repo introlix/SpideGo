@@ -5,7 +5,7 @@ from backend.utils.caching import (
     get_cached_feature_snippets,
     save_feature_snippets
 )
-from backend.utils.featured_snippets import crawl_and_chunk
+from backend.services.featured_snippets import crawl_and_chunk
 
 router = APIRouter(prefix="/search/featured_snippets", tags=["search"])
 
