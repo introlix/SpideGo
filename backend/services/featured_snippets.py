@@ -91,8 +91,10 @@ async def crawl_and_chunk(query: str, url: str) -> list:
         seen_sentences = set()
         used_tokens = 0
 
+        # Afer filtering every things we want the best results only so we sort it by score.
         relevant_chunks.sort(key=lambda x: x["score"], reverse=True)
 
+        # We filter out chunks that repeats
         seen = set()
         unique_relevant_chunks = []
         for chunk in relevant_chunks:
@@ -102,6 +104,8 @@ async def crawl_and_chunk(query: str, url: str) -> list:
 
         relevant_chunks = unique_relevant_chunks
 
+        # Now we will go over the chunks and append two or three chunks until it hit cap or chunks run out
+        # We will also be seeing if chunks have good start or not to filer out ads and other stuffs. And when we find out a good start we append it to keep_sentence list.
         for relevant_chunk in relevant_chunks:
             chunk_tokens = relevant_chunk.get(
                 "token_count", chunker.count_tokens(relevant_chunk["chunk_text"])
@@ -123,6 +127,7 @@ async def crawl_and_chunk(query: str, url: str) -> list:
                     if sentence_key in seen_sentences:
                         continue
 
+                    # iF its not a good start then we will countinue and if its a good start then add it to a keep_sentence list
                     if not found_good_start:
                         sentence_embedding = embedding_model.encode(
                             [sentence], batch_size=32
@@ -142,6 +147,7 @@ async def crawl_and_chunk(query: str, url: str) -> list:
 
                 relevant_chunk["chunk_text"] = "\n\n".join(kept_sentences)
 
+                # We don't use len because we are using ruled based token couter that uses tiktoken.
                 chunk_tokens = chunker.count_tokens(relevant_chunk["chunk_text"])
 
                 final_chunks.append(relevant_chunk)
@@ -150,6 +156,7 @@ async def crawl_and_chunk(query: str, url: str) -> list:
         if not final_chunks and relevant_chunks:
             final_chunks.append(relevant_chunks[0])
 
+        # In the end we sort the best chunks by their id to perserve flow and to user it does not feel weird.
         final_chunks.sort(key=lambda x: x["chunk_id"])
 
         final_text = "\n\n".join(chunk["chunk_text"] for chunk in final_chunks)
