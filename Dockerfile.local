@@ -79,7 +79,7 @@ COPY backend/ ./
 # 3. Setup Frontend (Next.js)
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm ci --omit=dev
+RUN pnpm install --prod --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
 COPY --from=frontend-builder /app/frontend/.next ./.next
 COPY --from=frontend-builder /app/frontend/public ./public
 COPY frontend/next.config.* ./
