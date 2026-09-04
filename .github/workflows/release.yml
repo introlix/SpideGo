@@ -1,0 +1,128 @@
+name: Build and Release Local Docker Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Name (e.g. v0.1.0)'
+        required: true
+        default: 'v0.0.1'
+
+jobs:
+  release:
+    name: Build, Package and Release SpideGo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set Release Tag
+        id: get_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lowercase Repository Name for GHCR
+        id: repo_names
+        run: |
+          echo "IMAGE_NAME=ghcr.io/$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        run: |
+          docker build -f Dockerfile.local \
+            -t spidego:latest \
+            -t spidego:${{ env.TAG_NAME }} .
+
+      - name: Save Docker Image to Compressed Tarball
+        run: |
+          echo "Packaging SpideGo Docker image into compressed tarball..."
+          docker save spidego:latest | gzip > spidego-local-${{ env.TAG_NAME }}.tar.gz
+          echo "Image packaged: spidego-local-${{ env.TAG_NAME }}.tar.gz"
+
+      - name: Tag and Push Docker Image to GHCR
+        run: |
+          docker tag spidego:latest ${{ env.IMAGE_NAME }}:latest
+          docker tag spidego:latest ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}
+          docker push ${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}
+
+      - name: Upload Tarball to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: SpideGo ${{ env.TAG_NAME }}
+          draft: false
+          prerelease: false
+          files: spidego-local-${{ env.TAG_NAME }}.tar.gz
+          body: |
+            ## SpideGo - Local Search Engine
+
+            This release contains the complete local image.
+
+            ### Services & Ports:
+            - **Frontend UI**: `http://localhost:8890`
+            - **Backend API & Docs**: `http://localhost:8889/docs`
+            - **SearXNG Engine**: `http://localhost:8888`
+
+            ---
+
+            ### 📦 Option 1: Run with Downloaded Release Tarball (Offline / Local)
+            1. Download `spidego-local-${{ env.TAG_NAME }}.tar.gz` attached below.
+            2. Load the image into Docker:
+               ```bash
+               docker load -i spidego-local-${{ env.TAG_NAME }}.tar.gz
+               ```
+            3. Run the container:
+               ```bash
+               docker run -d \
+                 --name spidego \
+                 -p 8888:8888 \
+                 -p 8889:8889 \
+                 -p 8890:8890 \
+                 --restart unless-stopped \
+                 spidego:latest
+               ```
+
+            ---
+
+            ### 🐳 Option 2: Run with Docker Compose (GHCR)
+            Create a `docker-compose.yml`:
+            ```yaml
+            services:
+              spidego:
+                image: ${{ env.IMAGE_NAME }}:latest
+                container_name: spidego
+                ports:
+                  - "8888:8888" # SearXNG
+                  - "8889:8889" # Backend FastAPI
+                  - "8890:8890" # Next.js Frontend
+                restart: unless-stopped
+            ```
+            Run:
+            ```bash
+            docker compose up -d
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,3 @@
+[submodule "searxng/searxng"]
+    path = searxng/searxng
+    url = https://github.com/searxng/searxng.git

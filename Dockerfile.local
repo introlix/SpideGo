@@ -1,0 +1,95 @@
+FROM node:24-alpine AS frontend-builder
+WORKDIR /app/frontend
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable pnpm
+
+COPY frontend/package.json frontend/pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
+
+COPY frontend/ ./
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm run build
+
+FROM python:3.14-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    NODE_ENV=production \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    NEXT_TELEMETRY_DISABLED=1
+
+WORKDIR /app
+
+# Install system dependencies, Node.js runtime, supervisor, wget, git, and Playwright Chromium deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    git \
+    build-essential \
+    supervisor \
+    libpq-dev \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxrandr2 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrender1 \
+    libxkbcommon0 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libasound2 \
+    libxss1 \
+    libxtst6 \
+    ca-certificates \
+    gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel gunicorn
+
+
+# Setup Searxng
+WORKDIR /app/searxng
+COPY searxng/searxng/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY searxng/searxng/searx/ ./searx/
+# Download FastText language model for SearXNG
+RUN mkdir -p ./searx/data && \
+    wget -O ./searx/data/lid.176.ftz https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+
+# Setup Backend
+WORKDIR /app/backend
+COPY backend/pyproject.toml ./
+RUN pip install --no-cache-dir . \
+    && python -m playwright install chromium
+
+COPY backend/ ./
+
+# 3. Setup Frontend (Next.js)
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci --omit=dev
+COPY --from=frontend-builder /app/frontend/.next ./.next
+COPY --from=frontend-builder /app/frontend/public ./public
+COPY frontend/next.config.* ./
+
+# 4. Supervisor Configuration
+WORKDIR /app
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Expose ports:
+# 8888: SearXNG
+# 8889: Backend API
+# 8890: Frontend UI
+EXPOSE 8888 8889 8890
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
