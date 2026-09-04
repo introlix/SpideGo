@@ -78,11 +78,9 @@ COPY backend/ ./
 
 # 3. Setup Frontend (Next.js)
 WORKDIR /app/frontend
-COPY frontend/package*.json ./
-RUN pnpm install --prod --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
-COPY --from=frontend-builder /app/frontend/.next ./.next
+COPY --from=frontend-builder /app/frontend/.next/standalone ./
+COPY --from=frontend-builder /app/frontend/.next/static ./.next/static
 COPY --from=frontend-builder /app/frontend/public ./public
-COPY frontend/next.config.* ./
 
 # 4. Supervisor Configuration
 WORKDIR /app
