@@ -80,7 +80,7 @@ pnpm install
 ```bash
 # From project root
 source .venv/bin/activate
-uvicorn backend.app:app --reload --port 8000
+uvicorn backend.app:app --reload --port 8889
 ```
 
 **Terminal 2 - Frontend:**

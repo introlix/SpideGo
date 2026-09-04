@@ -31,7 +31,7 @@ dependencies = [
     "pdfplumber>=0.11.10",
     "aiohttp>=3.14.3",
     "tiktoken>=0.14.0",
-    "sentence-transformers>=6.0.0",
+    "fastembed>=0.8.0",
     "marko>=2.2.4"
 ]
 
