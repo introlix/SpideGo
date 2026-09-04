@@ -55,11 +55,12 @@ jobs:
             -t spidego:latest \
             -t spidego:${{ env.TAG_NAME }} .
 
-      - name: Save Docker Image to Compressed Tarball
+      - name: Save and Split Docker Image to Compressed Tarball
         run: |
-          echo "Packaging SpideGo Docker image into compressed tarball..."
-          docker save spidego:latest | gzip > spidego-local-${{ env.TAG_NAME }}.tar.gz
-          echo "Image packaged: spidego-local-${{ env.TAG_NAME }}.tar.gz"
+          echo "Packaging and splitting SpideGo Docker image..."
+          docker save spidego:latest | gzip | split -b 1500M - spidego-local-${{ env.TAG_NAME }}.tar.gz.part-
+          echo "Image packaged and split successfully:"
+          ls -lh spidego-local-${{ env.TAG_NAME }}.tar.gz.part-*
 
       - name: Tag and Push Docker Image to GHCR
         run: |
@@ -68,14 +69,14 @@ jobs:
           docker push ${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.IMAGE_NAME }}:${{ env.TAG_NAME }}
 
-      - name: Upload Tarball to GitHub Release
+      - name: Upload Tarball Parts to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: SpideGo ${{ env.TAG_NAME }}
           draft: false
           prerelease: false
-          files: spidego-local-${{ env.TAG_NAME }}.tar.gz
+          files: spidego-local-${{ env.TAG_NAME }}.tar.gz.part-*
           body: |
             ## SpideGo - Local Search Engine
 
@@ -89,12 +90,25 @@ jobs:
             ---
 
             ### 📦 Option 1: Run with Downloaded Release Tarball (Offline / Local)
-            1. Download `spidego-local-${{ env.TAG_NAME }}.tar.gz` attached below.
-            2. Load the image into Docker:
+            1. Download all `spidego-local-${{ env.TAG_NAME }}.tar.gz.part-*` files attached below into the same directory.
+            2. Recombine the parts into a single archive:
+               - **Linux / macOS**:
+                 ```bash
+                 cat spidego-local-${{ env.TAG_NAME }}.tar.gz.part-* > spidego-local-${{ env.TAG_NAME }}.tar.gz
+                 ```
+               - **Windows (Command Prompt)**:
+                 ```cmd
+                 copy /b spidego-local-${{ env.TAG_NAME }}.tar.gz.part-* spidego-local-${{ env.TAG_NAME }}.tar.gz
+                 ```
+               - **Windows (PowerShell)**:
+                 ```powershell
+                 Get-Content spidego-local-${{ env.TAG_NAME }}.tar.gz.part-* -ReadCount 0 | Set-Content spidego-local-${{ env.TAG_NAME }}.tar.gz -Encoding Byte
+                 ```
+            3. Load the image into Docker:
                ```bash
                docker load -i spidego-local-${{ env.TAG_NAME }}.tar.gz
                ```
-            3. Run the container:
+            4. Run the container:
                ```bash
                docker run -d \
                  --name spidego \
