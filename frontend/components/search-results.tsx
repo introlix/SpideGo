@@ -113,7 +113,7 @@ function FeatureSnippets({ query, urls }: { query: string; urls: string[] }) {
   }
 
   return (
-    <div className="h-96 overflow-y-auto snippets-scroll space-y-10 sm:mt-0 mt-10">
+    <div className="max-h-96 overflow-y-auto snippets-scroll space-y-10 sm:mt-0 mt-10">
       {results?.map((data, index) => (
         <Card key={index} className="bg-accent">
           <CardContent>

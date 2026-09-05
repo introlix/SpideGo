@@ -1,4 +1,5 @@
 import hashlib
+import wikipedia
 from backend.services.web_crawler import web_crawler, ScrapeResult
 from backend.services.text_chunker import TextChunker
 from backend.config import CHUNK_SIZE, TOTAL_CHUNK_CAP
@@ -177,3 +178,59 @@ async def crawl_and_chunk(query: str, url: str) -> list:
     except Exception as e:
         print(f"Error processing {url}: {e}")
         return []
+
+
+async def get_wikipedia_summary(query: str, url: str) -> list:
+    """
+    Getting Wikipedia first chunk instead of finding best chunk.
+    """
+    crawled_result = get_cached_page(url)
+
+    if not crawled_result:
+        crawled_result = await web_crawler(url=url)
+        if isinstance(crawled_result, ScrapeResult):
+            to_save = {
+                "text": crawled_result.text,
+                "title": crawled_result.title,
+                "description": crawled_result.description,
+                "url": crawled_result.url,
+            }
+        else:
+            to_save = crawled_result
+        save_page(url, to_save)
+
+    chunker = TextChunker(chunk_size=CHUNK_SIZE)
+
+    if isinstance(crawled_result, ScrapeResult):
+        page_text = crawled_result.text or ""
+        page_title = crawled_result.title or ""
+        page_description = crawled_result.description or ""
+    else:
+        page_text = crawled_result.get("text", "") or ""
+        page_title = crawled_result.get("title", "") or ""
+        page_description = crawled_result.get("description", "") or ""
+
+    chunks = chunker.chunk_text(page_text)
+
+    full_summary = chunks[0]
+
+    embedding_model = embeddingmodelstate.get_model()
+
+    query_prefix = "Represent this sentence for searching relevant passages: "
+    query_embedding = embedding_model.encode([f"{query_prefix}{query}"])
+    chunk_embeddings = embedding_model.encode([full_summary['text']])
+
+    similarities = embedding_model.similarity(query_embedding, chunk_embeddings)[0]
+
+    chunk_record = {
+        "_id": f"{hashlib.md5(url.encode()).hexdigest()}_chunk_{1}",
+        "title": page_title,
+        "description": page_description,
+        "url": url,
+        "chunk_id": 1,
+        "chunk_text": full_summary['text'],
+        "score": float(similarities[0]),
+        "token_count": chunker.count_tokens(full_summary['text']),
+    }
+
+    return [chunk_record]

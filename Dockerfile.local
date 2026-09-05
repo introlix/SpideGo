@@ -1,17 +1,20 @@
 FROM node:24-alpine AS frontend-builder
 WORKDIR /app/frontend
 
-ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    CI=true \
+    NEXT_TELEMETRY_DISABLED=1
+
 RUN corepack enable pnpm
 
 COPY frontend/package.json frontend/pnpm-lock.yaml* ./
 
-# Allow build scripts during pnpm install
-RUN pnpm install --frozen-lockfile --config.dangerouslyAllowAllBuilds=true
+RUN echo "node-linker=hoisted" >> .npmrc && \
+    pnpm install --config.dangerouslyAllowAllBuilds=true
 
 COPY frontend/ ./
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm run build
+
 
 FROM python:3.11-slim
 
@@ -60,29 +63,34 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel gunicorn
 
 # Setup Searxng
 WORKDIR /app/searxng
+
 COPY searxng/searxng/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY searxng/searxng/searx/ ./searx/
-# Download FastText language model for SearXNG
-RUN mkdir -p ./searx/data && \
-    wget -O ./searx/data/lid.176.ftz https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz
+COPY searxng/searxng/ ./searxng/
+
+COPY searxng/server.bash ./server.bash
+COPY searxng/settings.yml ./settings.yml
+
+RUN mkdir -p ./searxng/searx/data && \
+    wget -O ./searxng/searx/data/lid.176.ftz https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz && \
+    chmod +x ./server.bash
 
 # Setup Backend
 WORKDIR /app/backend
 COPY backend/pyproject.toml ./
 RUN pip install --no-cache-dir . \
-    && python -m playwright install chromium
+    && python -m playwright install chromium --only-shell
 
 COPY backend/ ./
 
-# 3. Setup Frontend (Next.js)
+# Setup Frontend (Next.js)
 WORKDIR /app/frontend
 COPY --from=frontend-builder /app/frontend/.next/standalone ./
 COPY --from=frontend-builder /app/frontend/.next/static ./.next/static
 COPY --from=frontend-builder /app/frontend/public ./public
 
-# 4. Supervisor Configuration
+# Supervisor Configuration
 WORKDIR /app
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
